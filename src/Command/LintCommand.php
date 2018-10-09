@@ -51,6 +51,11 @@ class LintCommand extends Command
     protected $output;
 
     /**
+     * @var int|null
+     */
+    private $originalVerbosity;
+
+    /**
      * Configures the current command.
      */
     protected function configure()
@@ -115,7 +120,8 @@ class LintCommand extends Command
                 'json',
                 null,
                 InputOption::VALUE_OPTIONAL,
-                'Path to store JSON results.'
+                'Path to store JSON results.',
+                false
             );
     }
 
@@ -132,6 +138,7 @@ class LintCommand extends Command
     {
         $this->input = $input;
         $this->output = $output;
+        $this->originalVerbosity = $this->output->getVerbosity();
     }
 
     /**
@@ -158,9 +165,14 @@ class LintCommand extends Command
         $startTime = microtime(true);
         $startMemUsage = memory_get_usage(true);
 
+        if (null === $input->getOption('json')) {
+            $output->setVerbosity(OutputInterface::VERBOSITY_QUIET);
+        }
+
         $output->writeln($this->getApplication()->getLongVersion()." by overtrue and contributors.\n");
 
         $options = $this->mergeOptions();
+
         $verbosity = $output->getVerbosity();
 
         if ($verbosity >= OutputInterface::VERBOSITY_DEBUG) {
@@ -211,24 +223,34 @@ class LintCommand extends Command
         }
 
         if (!empty($options['json'])) {
-            $this->dumpResult((string) $options['json'], $errors, $options, [
+            $this->output->setVerbosity($this->originalVerbosity);
+
+            $json = $this->dumpResult($errors, $options, [
                 'time_usage' => $timeUsage,
                 'memory_usage' => $memUsage,
                 'using_cache' => 'Yes' == $usingCache,
                 'files_count' => $fileCount,
             ]);
+
+            if (true === $options['json']) {
+                $this->output->writeln($json);
+            } else {
+                $this->output->writeln("\n<info>Output JSON report: {$options['json']}</info>");
+                \file_put_contents($options['json'], $json);
+            }
         }
 
         return $code;
     }
 
     /**
-     * @param string $path
      * @param array  $errors
      * @param array  $options
      * @param array  $context
+     *
+     * @return string
      */
-    protected function dumpResult($path, array $errors, array $options, array $context = [])
+    protected function dumpResult(array $errors, array $options, array $context = [])
     {
         $result = [
             'status' => 'success',
@@ -236,7 +258,9 @@ class LintCommand extends Command
             'errors' => $errors,
         ];
 
-        \file_put_contents($path, \json_encode(\array_merge($result, $context)));
+        $pretty = $this->output->isVerbose() ? JSON_PRETTY_PRINT : 0;
+
+        return \json_encode(\array_merge($result, $context), $pretty | JSON_PARTIAL_OUTPUT_ON_ERROR);
     }
 
     /**
@@ -297,7 +321,7 @@ class LintCommand extends Command
 
             $this->output->write($this->getHighlightedCodeSnippet($filename, $error['line']));
 
-            $this->output->writeln("<error> {$error['error']}</error>");
+            $this->output->writeln("<error> <fg=white;bg=red;options=bold>ERROR:</> {$error['error']} </error>");
         }
     }
 
@@ -364,6 +388,14 @@ class LintCommand extends Command
         $options = $this->input->getOptions();
         $options['path'] = $this->input->getArgument('path');
         $options['cache'] = $this->input->getOption('cache');
+
+        if (null === $options['json']) {
+            $options['json'] = true;
+        }
+
+        if (is_string($options['json']) && (false !== $real = realpath($options['json']))) {
+            $options['json'] = $real;
+        }
 
         $config = [];
 

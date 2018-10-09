@@ -26,6 +26,9 @@
   "require-dev": {
     "jakub-onderka/php-console-highlighter": "^0.3.2"
   },
+  "suggest": {
+    "jakub-onderka/php-console-highlighter": "enables error snippet highlighting"
+  },
   "autoload": {
     "psr-4": {
       "Overtrue\\PHPLint\\": "src/"
